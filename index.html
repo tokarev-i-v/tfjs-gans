@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>MNIST GAN</title>
+<meta charset="UTF-8">
+<meta name="description" content="Simple Generative Adversarial Network in TensorflowJS"/>
+<meta name="author" content="Daniel Chang"/>
+<meta name="keywords" content="GAN, generative adversarial network, neural networks, tensorflow"/>
+
+<!--
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@0.11.7"> </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/1.1.2/tf.js"></script>
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/1.2.2/tf.js"></script>
+
+<script src="image-util.js"></script>
+<script src="64_data_processing.js"></script>
+<script src="gan.js"></script>
+<script src="weights.js"></script>
+<link rel="stylesheet" type="text/css" href="styles.css">
+</head>
+<body>
+  <section>
+    <h4>Simple Dense Generator and Dense Descriminator</h4>
+    <p>
+      We train GAN on 64x64 grayscale images of faces.
+    </p>
+    <table style="margin-left:20px">
+      <tr>
+        <td>Early stages:</td>
+        <td><img src="images/sample-early.png" height="30px"></img></td>
+      </tr>
+      <tr>
+        <td>Getting better:</td>
+        <td><img src="images/sample-mid.png" height="30px"></img></td>
+      </tr>
+      <tr>
+        <td>Later still:</td>
+        <td><img src="images/sample-late.png" height="30px"></img></td>
+      </tr>
+    </table>
+
+    <p>
+    Click <strong>Train</strong> to train for (an additional) 5) epochs. Click <strong>Load weights</strong> to restore 
+    pre-trained weights for the <em>Generator</em>. Click <strong>Sample image</strong> to generate a sample output using the current weights. 
+    The network should start to converge after 15-20 epochs.
+    </p>
+    <button id="train" onclick="train()">Train</button>
+    <button onclick="loadCachedModel()">Load weights</button>
+    <button onclick="sampleImage()">Sample image</button>
+    <br>
+    <p id="load-status"><br>Loading resources...this may take a few seconds<br></p>
+    <br>
+    <br>
+    <div id="samples-container"></div>
+    <br>
+  </section>
+  <a href="https://github.com/mwdchang/tfjs-gan"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/38ef81f8aca64bb9a64448d0d70f1308ef5341ab/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f6461726b626c75655f3132313632312e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_darkblue_121621.png"></a>
+</body>
+<script>
+
+const mnistData = new MnistData();
+
+function loadCachedModel() {
+  G1w = tf.variable(tf.tensor(GM.G1w.data).reshape(GM.G1w.shape));
+  G1b = tf.variable(tf.tensor(GM.G1b.data).reshape(GM.G1b.shape));
+  G2w = tf.variable(tf.tensor(GM.G2w.data).reshape(GM.G2w.shape));
+  G2b = tf.variable(tf.tensor(GM.G2b.data).reshape(GM.G2b.shape));
+  G3w = tf.variable(tf.tensor(GM.G3w.data).reshape(GM.G3w.shape));
+  G3b = tf.variable(tf.tensor(GM.G3b.data).reshape(GM.G3b.shape));
+}
+
+async function loadMnist() {
+  console.log('Start loading...');
+  document.querySelectorAll('button').forEach( d => d.disabled = true);
+  await mnistData.load();
+  console.log('Done loading...');
+  document.querySelectorAll('button').forEach(d => d.disabled = false);
+  document.querySelector('#load-status').style.display = 'none';
+}
+
+async function train(num=10000) {
+  console.log('starting....');
+  document.querySelector('#train').disabled = true;
+
+  for (let i=0; i < num; i++) {
+    document.querySelector('#train').innerHTML = i + '/' + num;
+    const real = mnistData.nextTrainBatch(BATCH);
+    const fake = seed();
+
+    console.log('before trainBatch numTensors (outside tidy): ' + tf.memory().numTensors);
+    const [dcost, gcost] = await trainBatch(real.xs, fake);
+    fake.dispose();
+    if (real.xs){
+      real.xs.dispose();
+    }
+    if (real.labels){
+      real.labels.dispose();
+    }
+    if (i % 50 === 0 || i === (num-1)) {
+      console.log('i', i);
+      console.log('discriminator cost', dcost.dataSync());
+      console.log('generator cost', gcost.dataSync());
+    }
+    dcost.dispose();
+    gcost.dispose();
+    console.log('after trainBatch numTensors (outside tidy): ' + tf.memory().numTensors);
+  }
+  document.querySelector('#train').innerHTML = 'Train';
+  document.querySelector('#train').disabled = false;
+  console.log('done...');
+}
+
+async function sampleImage() {
+  await tf.nextFrame();
+  const options = {
+    width: SIZE,
+    height: SIZE 
+  };
+
+  const canvas = document.createElement('canvas');
+  canvas.width = options.width;
+  canvas.height = options.height;
+  const ctx = canvas.getContext('2d');
+  const imageData = new ImageData(options.width, options.height);
+  const data = gen(seed(1)).dataSync();
+  
+  // Undo tanh
+  /*
+  for (let i=0; i < data.length; i++) {
+    data[i] = 0.5 * (data[i]+1.0);
+  }
+  */
+
+  const unflat = ImageUtil.unflatten(data, options);
+  for (let i=0; i < unflat.length; i++) {
+    imageData.data[i] = unflat[i];
+  }
+  ctx.putImageData(imageData, 0, 0);
+  document.body.querySelector('#samples-container').appendChild(canvas);
+}
+
+
+async function start() {
+  await loadMnist();
+}
+
+start();
+
+
+</script>
+</html>
